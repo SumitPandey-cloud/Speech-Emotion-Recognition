@@ -3,45 +3,41 @@ import pickle
 import numpy as np
 import librosa
 from flask import Flask, request, jsonify, send_from_directory
+from scipy.signal import correlate
 
 app = Flask(__name__, static_folder="static")
 
 weights = np.load("model_weights.npy", allow_pickle=True)
 
-def relu(x):
-    return np.maximum(0, x)
-
+def relu(x): return np.maximum(0, x)
 def softmax(x):
     e = np.exp(x - np.max(x))
     return e / e.sum()
 
-def conv1d(x, W, b, stride=1):
+def conv1d_fast(x, W, b):
+    n_filters = W.shape[2]
     kernel_size = W.shape[0]
-    out_len = (x.shape[0] - kernel_size) // stride + 1
-    out = np.zeros((out_len, W.shape[2]))
-    for i in range(out_len):
-        out[i] = np.tensordot(x[i:i+kernel_size], W, axes=([0,1],[0,1])) + b
+    out_len = x.shape[0] - kernel_size + 1
+    out = np.zeros((out_len, n_filters))
+    for f in range(n_filters):
+        for c in range(W.shape[1]):
+            out[:, f] += correlate(x[:, c], W[:, c, f], mode='valid')
+        out[:, f] += b[f]
     return out
 
 def maxpool1d(x, pool=2):
     out_len = x.shape[0] // pool
-    return np.array([x[i*pool:(i+1)*pool].max(axis=0) for i in range(out_len)])
+    return x[:out_len*pool].reshape(out_len, pool, -1).max(axis=1)
 
 def predict_numpy(features):
-    x = features.reshape(-1, 1)
-    # Conv1 + pool
-    x = relu(conv1d(x, weights[0], weights[1]))
+    x = features.reshape(-1, 1).astype(np.float32)
+    x = relu(conv1d_fast(x, weights[0], weights[1]))
     x = maxpool1d(x)
-    # Conv2 + pool
-    x = relu(conv1d(x, weights[2], weights[3]))
+    x = relu(conv1d_fast(x, weights[2], weights[3]))
     x = maxpool1d(x)
-    # Flatten
     x = x.flatten()
-    # Dense1
     x = relu(x @ weights[4] + weights[5])
-    # Dense2
     x = relu(x @ weights[6] + weights[7])
-    # Output
     x = softmax(x @ weights[8] + weights[9])
     return x
 
@@ -111,6 +107,8 @@ def predict():
             "all": all_probs
         })
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
     finally:
         if os.path.exists(tmp_path):
