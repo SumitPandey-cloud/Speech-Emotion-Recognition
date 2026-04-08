@@ -3,30 +3,47 @@ import pickle
 import numpy as np
 import librosa
 from flask import Flask, request, jsonify, send_from_directory
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout, Input
 
 app = Flask(__name__, static_folder="static")
 
-def build_model():
-    model = Sequential([
-        Input(shape=(180, 1)),
-        Conv1D(filters=64, kernel_size=3, activation='relu'),
-        MaxPooling1D(pool_size=2),
-        Conv1D(filters=128, kernel_size=3, activation='relu'),
-        MaxPooling1D(pool_size=2),
-        Flatten(),
-        Dense(128, activation='relu'),
-        Dropout(0.3),
-        Dense(64, activation='relu'),
-        Dropout(0.3),
-        Dense(8, activation='softmax')
-    ])
-    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-    return model
+weights = np.load("model_weights.npy", allow_pickle=True)
 
-model = build_model()
-model.load_weights("ser_weights.weights.h5")
+def relu(x):
+    return np.maximum(0, x)
+
+def softmax(x):
+    e = np.exp(x - np.max(x))
+    return e / e.sum()
+
+def conv1d(x, W, b, stride=1):
+    kernel_size = W.shape[0]
+    out_len = (x.shape[0] - kernel_size) // stride + 1
+    out = np.zeros((out_len, W.shape[2]))
+    for i in range(out_len):
+        out[i] = np.tensordot(x[i:i+kernel_size], W, axes=([0,1],[0,1])) + b
+    return out
+
+def maxpool1d(x, pool=2):
+    out_len = x.shape[0] // pool
+    return np.array([x[i*pool:(i+1)*pool].max(axis=0) for i in range(out_len)])
+
+def predict_numpy(features):
+    x = features.reshape(-1, 1)
+    # Conv1 + pool
+    x = relu(conv1d(x, weights[0], weights[1]))
+    x = maxpool1d(x)
+    # Conv2 + pool
+    x = relu(conv1d(x, weights[2], weights[3]))
+    x = maxpool1d(x)
+    # Flatten
+    x = x.flatten()
+    # Dense1
+    x = relu(x @ weights[4] + weights[5])
+    # Dense2
+    x = relu(x @ weights[6] + weights[7])
+    # Output
+    x = softmax(x @ weights[8] + weights[9])
+    return x
 
 with open("scaler.pkl", "rb") as f: scaler = pickle.load(f)
 with open("encoder.pkl", "rb") as f: encoder = pickle.load(f)
@@ -66,16 +83,14 @@ def predict():
     if file.filename == "":
         return jsonify({"error": "Empty filename"}), 400
 
-    ext = os.path.splitext(file.filename)[1].lower()
-    if not ext:
-        ext = ".wav"
+    ext = os.path.splitext(file.filename)[1].lower() or ".wav"
     tmp_path = "temp_upload" + ext
     file.save(tmp_path)
 
     try:
         features = extract_features(tmp_path)
-        features = scaler.transform([features])
-        probs = model.predict(features)[0]
+        features = scaler.transform([features])[0]
+        probs = predict_numpy(features)
         top_idx = int(np.argmax(probs))
         top_label = encoder.classes_[top_idx]
 
