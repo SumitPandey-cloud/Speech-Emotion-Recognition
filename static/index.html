@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SER Engine</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0c0b; color: #dde8d0; font-family: 'DM Sans', sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 3rem 1rem; }
+  header { text-align: center; margin-bottom: 2.5rem; }
+  header h1 { font-family: 'Space Mono', monospace; font-size: 2rem; font-weight: 700; color: #a8cf90; letter-spacing: -1px; }
+  header p { font-size: 12px; color: #445540; font-family: 'Space Mono', monospace; margin-top: 6px; }
+  .card { background: #111712; border: 1px solid #1e2e1e; border-radius: 16px; padding: 2rem; width: 100%; max-width: 520px; margin-bottom: 1.5rem; }
+  .upload-zone { border: 2px dashed #1e3020; border-radius: 12px; padding: 2.5rem 1.5rem; text-align: center; cursor: pointer; position: relative; transition: border-color .2s, background .2s; background: #0d120d; }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: #4a7a40; background: #101810; }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-icon { font-size: 42px; display: block; margin-bottom: 12px; }
+  .upload-zone h3 { font-size: 15px; font-weight: 500; color: #8dab7a; margin-bottom: 6px; }
+  .upload-zone p { font-size: 11px; color: #3d5038; font-family: 'Space Mono', monospace; }
+  #file-name { font-size: 12px; font-family: 'Space Mono', monospace; color: #6dbf6d; margin-top: 12px; display: none; }
+  .btn { width: 100%; margin-top: 1.25rem; padding: 14px; background: #1e3a1e; border: 1px solid #3a6a30; border-radius: 10px; color: #a8cf90; font-family: 'Space Mono', monospace; font-size: 13px; font-weight: 700; letter-spacing: 2px; cursor: pointer; transition: background .2s; }
+  .btn:hover { background: #254a22; }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  #result-card { display: none; }
+  .emotion-display { text-align: center; padding: 1.5rem 0 1rem; }
+  .emotion-emoji { font-size: 64px; display: block; margin-bottom: 10px; }
+  .emotion-label { font-family: 'Space Mono', monospace; font-size: 26px; font-weight: 700; color: #a8cf90; text-transform: uppercase; letter-spacing: 3px; }
+  .confidence-badge { display: inline-block; margin-top: 8px; padding: 4px 14px; background: #1a2e1a; border: 1px solid #2e4e26; border-radius: 20px; font-family: 'Space Mono', monospace; font-size: 12px; color: #6dbf6d; }
+  .divider { height: 1px; background: #1a2a1a; margin: 1.5rem 0; }
+  .bars-title { font-family: 'Space Mono', monospace; font-size: 11px; color: #3d5038; letter-spacing: 1px; margin-bottom: 1rem; text-transform: uppercase; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .bar-label { width: 90px; font-size: 12px; color: #8a9e80; font-family: 'Space Mono', monospace; text-align: right; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 6px; background: #151e15; border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; background: #4a7a40; border-radius: 3px; transition: width 0.7s cubic-bezier(.4,0,.2,1); width: 0%; }
+  .bar-fill.top { background: #a8cf90; }
+  .bar-score { width: 42px; font-size: 11px; font-family: 'Space Mono', monospace; color: #556650; text-align: right; flex-shrink: 0; }
+  #status { text-align: center; font-family: 'Space Mono', monospace; font-size: 12px; color: #556650; margin-top: 10px; min-height: 18px; }
+  .spinner { display: inline-block; width: 10px; height: 10px; border: 1.5px solid #3a5030; border-top-color: #6dbf6d; border-radius: 50%; animation: spin .7s linear infinite; margin-right: 8px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  footer { font-family: 'Space Mono', monospace; font-size: 10px; color: #2a3a28; margin-top: 2rem; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>// SER ENGINE</h1>
+  <p>speech emotion recognition · RAVDESS · 8 classes</p>
+</header>
+
+<div class="card">
+  <div class="upload-zone" id="drop-zone">
+    <input type="file" id="audio-input" accept="audio/*,.wav,.mp3,.ogg,.flac,.m4a,.aac,.wma">
+    <span class="upload-icon">🎙️</span>
+    <h3>Drop a .wav file here</h3>
+    <p>or click to browse</p>
+    <div id="file-name"></div>
+  </div>
+  <button class="btn" id="analyze-btn" disabled>▶ ANALYZE EMOTION</button>
+  <div id="status"></div>
+</div>
+
+<div class="card" id="result-card">
+  <div class="emotion-display">
+    <span class="emotion-emoji" id="result-emoji">😐</span>
+    <div class="emotion-label" id="result-label">neutral</div>
+    <span class="confidence-badge" id="result-conf">0.0% confidence</span>
+  </div>
+  <div class="divider"></div>
+  <div class="bars-title">all emotions</div>
+  <div id="bars-container"></div>
+</div>
+
+<footer>MFCC + MEL + CHROMA · 1D CNN · trained on RAVDESS</footer>
+
+<script>
+  const input = document.getElementById('audio-input');
+  const dropZone = document.getElementById('drop-zone');
+  const fileName = document.getElementById('file-name');
+  const btn = document.getElementById('analyze-btn');
+  const status = document.getElementById('status');
+  const resultCard = document.getElementById('result-card');
+  let selectedFile = null;
+
+  function setFile(file) {
+    selectedFile = file;
+    fileName.textContent = '📂 ' + file.name;
+    fileName.style.display = 'block';
+    btn.disabled = false;
+    status.textContent = '';
+    resultCard.style.display = 'none';
+  }
+
+  input.addEventListener('change', () => { if (input.files[0]) setFile(input.files[0]); });
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
+
+  btn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    btn.disabled = true;
+    status.innerHTML = '<span class="spinner"></span>extracting features...';
+    const form = new FormData();
+    form.append('file', selectedFile);
+    try {
+      const res = await fetch('/predict', { method: 'POST', body: form });
+      const data = await res.json();
+      if (data.error) { status.textContent = '⚠ ' + data.error; btn.disabled = false; return; }
+      document.getElementById('result-emoji').textContent = data.emoji;
+      document.getElementById('result-label').textContent = data.emotion;
+      document.getElementById('result-conf').textContent = data.confidence + '% confidence';
+      const container = document.getElementById('bars-container');
+      container.innerHTML = '';
+      data.all.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = 'bar-row';
+        row.innerHTML = `<div class="bar-label">${item.emoji} ${item.emotion}</div><div class="bar-track"><div class="bar-fill ${idx === 0 ? 'top' : ''}" id="bar-${idx}"></div></div><div class="bar-score">${item.score}%</div>`;
+        container.appendChild(row);
+      });
+      resultCard.style.display = 'block';
+      requestAnimationFrame(() => {
+        data.all.forEach((item, idx) => {
+          setTimeout(() => { const bar = document.getElementById('bar-' + idx); if (bar) bar.style.width = item.score + '%'; }, idx * 60);
+        });
+      });
+      status.textContent = '';
+    } catch (err) {
+      status.textContent = '⚠ connection error — is Flask running?';
+    }
+    btn.disabled = false;
+  });
+</script>
+</body>
+</html>

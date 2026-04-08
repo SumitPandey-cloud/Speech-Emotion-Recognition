@@ -1,0 +1,6 @@
+flask
+librosa
+numpy
+scikit-learn
+tensorflow
+gunicorn
