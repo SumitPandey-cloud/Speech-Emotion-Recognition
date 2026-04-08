@@ -2,5 +2,5 @@ flask
 librosa
 numpy
 scikit-learn
-tensorflow-cpu==2.13.0
+tensorflow==2.15.0
 gunicorn
